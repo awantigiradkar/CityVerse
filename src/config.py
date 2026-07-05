@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     DB_USER: str = Field(default="postgres")
     DB_PASSWORD: str = Field(default="postgres")
     DB_NAME: str = Field(default="cityverse")
+    
+    # Toggle between SQLite and PostgreSQL
+    USE_SQLITE: bool = Field(default=True)
 
     # API Configuration
     API_HOST: str = Field(default="0.0.0.0")
@@ -23,11 +26,22 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """
-        Dynamically constructs the SQLAlchemy database URI connection string.
+        Dynamically constructs the database URL. 
+        Uses SQLite file-based DB if USE_SQLITE is True, otherwise PostgreSQL.
         """
+        if self.USE_SQLITE:
+            # Locate db directory in the project root
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            db_dir = os.path.join(base_dir, "db")
+            os.makedirs(db_dir, exist_ok=True)
+            db_path = os.path.join(db_dir, "cityverse.db")
+            # Replace Windows backslashes with forward slashes for SQLite connection URI
+            formatted_path = db_path.replace("\\", "/")
+            return f"sqlite:///{formatted_path}"
+            
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
-    # Configure Pydantic to read configurations from .env
+    # Configure Pydantic to read configuration from .env
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
