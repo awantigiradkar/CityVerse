@@ -42,7 +42,6 @@ class FeaturePipeline:
         Transforms raw data into an engineered feature set.
         Performs temporal encoding, lag creation, rolling windows, and one-hot encoding.
         """
-        # Copy to avoid modifying original dataframe
         data = df.copy()
         
         # 1. Calendar/Temporal Features
@@ -59,14 +58,12 @@ class FeaturePipeline:
         data["day_cos"] = np.cos(2 * np.pi * data["day_of_week"] / 7.0)
         
         # 2. Lag Features (grouped by location so values don't bleed between zones)
-        # Shift values backwards in time to capture auto-regressive trends
         data["lag_1h"] = data.groupby("location_id")[target_col].shift(1)
         data["lag_2h"] = data.groupby("location_id")[target_col].shift(2)
         data["lag_24h"] = data.groupby("location_id")[target_col].shift(24)
         data["lag_168h"] = data.groupby("location_id")[target_col].shift(168)  # 1 week ago lag
         
         # 3. Rolling Statistics
-        # 3-hour and 24-hour moving averages
         data["rolling_mean_3h"] = data.groupby("location_id")[target_col].transform(
             lambda x: x.shift(1).rolling(window=3).mean()
         )
@@ -78,16 +75,16 @@ class FeaturePipeline:
         )
         
         # 4. Weather Interactions
-        # Comfort Index: Temp-Humidity index
         data["temp_humidity_index"] = data["temperature"] * (data["humidity"] / 100.0)
         data["temp_wind_interaction"] = data["temperature"] * data["wind_speed"]
         
-        # 5. Drop NaN rows (first few rows of each location that don't have historical lags)
+        # 5. Drop NaN rows (only where our longest lag 'lag_168h' is missing)
         data = data.dropna(subset=["lag_168h"])
         
-        # 6. One-Hot Encode Location names (helps regression models capture spatial biases)
-        # E.g. Downtown will get its own binary indicator column
-        location_dummies = pd.get_dummies(data["location_name"], prefix="loc", dtype=int)
+        # 6. One-Hot Encode Location names
+        # Standardize strings by replacing spaces and parentheses with underscores for ML engine safety
+        cleaned_loc_names = data["location_name"].str.replace(" ", "_").str.replace("(", "_").str.replace(")", "_")
+        location_dummies = pd.get_dummies(cleaned_loc_names, prefix="loc", dtype=int)
         data = pd.concat([data, location_dummies], axis=1)
         
         return data
@@ -96,18 +93,22 @@ class FeaturePipeline:
         """
         Splits data chronologically (temporal split) to avoid future-leakage.
         """
-        # Determine split index based on timestamps
         unique_timestamps = sorted(df["timestamp"].unique())
         split_idx = int(len(unique_timestamps) * (1 - test_ratio))
         split_time = unique_timestamps[split_idx]
         
-        print(f"Temporal Split Time Threshold: {split_time}")
-        
-        # Features to drop from X (target, keys, strings)
+        # Features to drop from X (target, keys, strings, metadata)
         drop_cols = ["id", "timestamp", "location_id", "location_name", "condition", "created_at", target_col]
-        # Handle transport table which might contain multiple sub-targets
-        if "metro_ridership" in df.columns and target_col != "metro_ridership":
-            drop_cols.extend(["metro_ridership", "bus_ridership", "taxi_ridership"])
+        
+        # CRITICAL: Drop simultaneously-determined concurrent columns to prevent data leakage and support forecasting
+        concurrent_cols = [
+            "avg_speed", "vehicle_count", 
+            "hotel_occupancy", 
+            "peak_load_kw", 
+            "pm25", "pm10", "no2", "co", 
+            "bus_ridership", "taxi_ridership"
+        ]
+        drop_cols.extend([col for col in concurrent_cols if col in df.columns])
         
         # Train Split
         train_df = df[df["timestamp"] < split_time]
@@ -124,16 +125,8 @@ class FeaturePipeline:
 if __name__ == "__main__":
     load_dotenv()
     pipeline = FeaturePipeline()
-    
-    # Run test on traffic conditions table
-    print("Testing Feature Pipeline on 'traffic_conditions'...")
     df_raw = pipeline.load_raw_data("traffic_conditions")
-    print(f"Raw Data Shape: {df_raw.shape}")
-    
     df_features = pipeline.engineer_features(df_raw, target_col="congestion_index")
-    print(f"Features Data Shape: {df_features.shape}")
-    
     X_train, X_test, y_train, y_test = pipeline.prepare_train_test_split(df_features, target_col="congestion_index")
-    print(f"Train Features Shape: {X_train.shape}, Test Features Shape: {X_test.shape}")
-    print(f"Target variable statistics:\n{y_train.describe()}")
+    print(f"Features: {list(X_train.columns)}")
     print("\nFeature Engineering test passed successfully!")

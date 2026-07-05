@@ -102,10 +102,13 @@ def run_simulation(
                     })
                 weather_df = pd.DataFrame(synthetic_rows)
 
-        # Set up location dummy indicators
+        # Set up location dummy indicators (standardizing spaces/parentheses to match new ML features)
         all_locations = ["Downtown Dubai", "Dubai Marina", "Deira", "Palm Jumeirah", 
                          "Jumeirah", "Business Bay", "Al Barsha", "Dubai International Airport (DXB)"]
-        loc_dummies = {f"loc_{name}": 1 if name == loc_name else 0 for name in all_locations}
+        loc_dummies = {
+            f"loc_{name.replace(' ', '_').replace('(', '_').replace(')', '_')}": 1 if name == loc_name else 0 
+            for name in all_locations
+        }
 
         # Initialize separate buffers for baseline and simulated run
         base_buffer = hist_df.copy()
