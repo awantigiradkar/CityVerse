@@ -1,0 +1,4 @@
+timestamp,value,source,data_type
+2024-01-01 00:00:00,10,test,SYNTHETIC
+2024-01-01 01:00:00,20,test,SYNTHETIC
+2024-01-01 02:00:00,30,test,SYNTHETIC

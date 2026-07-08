@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
     # ── Free Public API URLs (no key required) ────────────────────────────────
     openmeteo_base_url: str = "https://api.open-meteo.com/v1"
+    openmeteo_archive_url: str = "https://archive-api.open-meteo.com/v1"
     openaq_base_url: str = "https://api.openaq.org/v3"
 
     # ── Dubai Geographic Center ───────────────────────────────────────────────
